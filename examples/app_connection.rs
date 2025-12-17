@@ -112,11 +112,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(checkpoint) = node.bft().last_finalized() {
         println!("   ✓ Checkpoint finalized:");
         println!("      Height: {}", checkpoint.height);
-        println!(
-            "      State Root: {:?}",
-            hex::encode(&checkpoint.state_root.0[..8])
-        );
-        println!("      → This checkpoint is FINALIZED via BFT");
+        println!("      → This checkpoint is FINALIZED via BFT over the ordered sequence");
     } else {
         println!("   ⏳ No checkpoint finalized yet (need more blocks)");
     }
