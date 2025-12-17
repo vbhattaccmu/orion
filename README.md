@@ -1,4 +1,4 @@
-## Orion: Hybrid DAG + BFT Consensus Engine
+## Orion
 
 <p align="center">
   <img src="assets/logo.png" alt="Orion logo" />
