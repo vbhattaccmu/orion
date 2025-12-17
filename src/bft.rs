@@ -1,7 +1,7 @@
 use crate::committee::Committee;
 use crate::crypto::KeyPair;
 use crate::network::DataPlane;
-use crate::types::{AuthorityIndex, CheckpointCandidate, Height, StateRoot};
+use crate::types::{AuthorityIndex, CheckpointCandidate, Height};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -74,18 +74,12 @@ impl BftCheckpointEngine {
             return None;
         }
 
-        // Checkpoint candidate is based on ordered sequence, not executed state
-        // State root will be computed after execution, which happens after checkpoint
-        Some(CheckpointCandidate {
-            height,
-            state_root: StateRoot([0; 32]), // Placeholder, will be filled after execution
-        })
+        Some(CheckpointCandidate { height })
     }
 
     pub fn create_vote(&self, candidate: CheckpointCandidate, phase: BftPhase) -> CheckpointVote {
         let mut message = Vec::new();
         message.extend_from_slice(&candidate.height.to_le_bytes());
-        message.extend_from_slice(&candidate.state_root.0);
         message.push(match phase {
             BftPhase::Prepare => 0,
             BftPhase::Commit => 1,
@@ -115,7 +109,6 @@ impl BftCheckpointEngine {
         if let Some(validator) = self.committee.get(vote.from) {
             let mut message = Vec::new();
             message.extend_from_slice(&vote.candidate.height.to_le_bytes());
-            message.extend_from_slice(&vote.candidate.state_root.0);
             message.push(match vote.phase {
                 BftPhase::Prepare => 0,
                 BftPhase::Commit => 1,
@@ -249,10 +242,7 @@ mod tests {
         let keypair = KeyPair::generate();
         let bft = BftCheckpointEngine::new(committee, 0, keypair, 10);
 
-        let candidate = CheckpointCandidate {
-            height: 10,
-            state_root: StateRoot([1; 32]),
-        };
+        let candidate = CheckpointCandidate { height: 10 };
 
         let vote = bft.create_vote(candidate.clone(), BftPhase::Prepare);
 
@@ -268,10 +258,7 @@ mod tests {
         let keypair = KeyPair::generate();
         let bft = BftCheckpointEngine::new(committee.clone(), 0, keypair.clone(), 10);
 
-        let candidate = CheckpointCandidate {
-            height: 10,
-            state_root: StateRoot([1; 32]),
-        };
+        let candidate = CheckpointCandidate { height: 10 };
 
         let vote = bft.create_vote(candidate.clone(), BftPhase::Prepare);
 
@@ -307,10 +294,7 @@ mod tests {
             engines.push(bft);
         }
 
-        let candidate = CheckpointCandidate {
-            height: 10,
-            state_root: StateRoot([1; 32]),
-        };
+        let candidate = CheckpointCandidate { height: 10 };
 
         // Create votes from all validators
         let mut votes = Vec::new();
@@ -339,10 +323,7 @@ mod tests {
         let keypair = KeyPair::generate();
         let bft = BftCheckpointEngine::new(committee, 0, keypair, 10);
 
-        let candidate = CheckpointCandidate {
-            height: 10,
-            state_root: StateRoot([1; 32]),
-        };
+        let candidate = CheckpointCandidate { height: 10 };
 
         // Process checkpoint on ordered sequence should attempt two-phase commit
         // Note: This will only succeed if we simulate quorum votes; here we just

@@ -31,7 +31,6 @@ pub struct CommittedSubDag {
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct CheckpointCandidate {
     pub height: Height,
-    pub state_root: StateRoot,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

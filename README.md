@@ -1,6 +1,8 @@
 ## Orion: Hybrid DAG + BFT Consensus Engine
 
-![Orion logo](assets/logo.png)
+<p align="center">
+  <img src="assets/logo.png" alt="Orion logo" />
+</p>
 
 Orion is a hybrid consensus engine combining **DAG-based fast ordering** with **BFT checkpoint finalization**. It separates transaction ordering (consensus) from execution, providing low-latency ordering guarantees while maintaining strong finality through periodic BFT checkpoints.
 
@@ -16,12 +18,22 @@ The system consists of three main components that run in a *pipeline*:
 
 **Traditional BFT**: Execution is part of consensus → Consensus waits for execution → **Slow**
 
-**This Hybrid System**:
+**The Hybrid System**:
 - **DAG orders transactions** (fast, does not wait for execution)
 - **BFT finalizes checkpoints on the ordered prefix** (does not wait for execution)
 - **Execution consumes committed sub-dags as soon as they are ordered**, in parallel with checkpointing
 
-## Detailed Flow Sequence
+## Design Principles
+
+1. **Separation of Concerns**: Ordering (consensus) is completely separate from execution
+2. **Fast Path**: DAG provides low-latency ordering (doesn't wait for execution)
+3. **Strong Finality**: BFT checkpoints provide cryptographic finality on ordered sequences
+4. **Execution After Finality**: Execution only happens after BFT finalizes the order
+5. **Non-Blocking**: Execution doesn't block consensus - consensus latency is independent
+6. **Determinism**: All nodes see the same order and state
+7. **Immutability**: Once BFT-finalized, transactions cannot be reordered
+
+## Detailed Message Flow Sequence
 
 - **1. Client → DAG (Ordering)**
   - The application submits transactions to an Orion node.
@@ -151,16 +163,6 @@ Run all tests:
 ```bash
 cargo test
 ```
-
-## Design Principles
-
-1. **Separation of Concerns**: Ordering (consensus) is completely separate from execution
-2. **Fast Path**: DAG provides low-latency ordering (doesn't wait for execution)
-3. **Strong Finality**: BFT checkpoints provide cryptographic finality on ordered sequences
-4. **Execution After Finality**: Execution only happens after BFT finalizes the order
-5. **Non-Blocking**: Execution doesn't block consensus - consensus latency is independent
-6. **Determinism**: All nodes see the same order and state
-7. **Immutability**: Once BFT-finalized, transactions cannot be reordered
 
 ## Why This is Better Than Traditional BFT
 

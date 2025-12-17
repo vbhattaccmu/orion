@@ -116,17 +116,11 @@ async fn test_checkpoint_formation() {
     // Try to form checkpoint at interval height using ordered-sequence-only candidate
     if let Some(candidate) = bft.derive_candidate(10) {
         // Process checkpoint on the ordered sequence (two-phase BFT).
-        // This will only fully succeed with quorum votes from the network; here we just
-        // exercise the path and ensure it does not panic and, if it returns a QC, that
-        // it is for the COMMIT phase.
         let result = bft.process_checkpoint_on_ordered_sequence(candidate.clone());
 
         assert!(
             result.is_none()
-                || matches!(
-                    result.as_ref().unwrap().phase,
-                    orion::bft::BftPhase::Commit
-                )
+                || matches!(result.as_ref().unwrap().phase, orion::bft::BftPhase::Commit)
         );
     }
 }
@@ -158,7 +152,5 @@ async fn test_multiple_rounds() {
 
     // All blocks should be stored
     let committed = dag.get_committed();
-    // At least some processing should have occurred
-    // (In a real scenario with network, commits would happen)
     assert!(committed.len() == committed.len()); // Just verify we can read commits
 }

@@ -1,0 +1,23 @@
+# Rust / Cargo
+target/
+Cargo.lock
+
+# Build artifacts
+**/*.rlib
+**/*.rmeta
+**/*.dSYM
+
+# Intermediate / debug
+debug/
+*.log
+
+# IDE / Editor
+.idea/
+.vscode/
+*.iml
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+
