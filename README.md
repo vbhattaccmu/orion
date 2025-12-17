@@ -1,5 +1,3 @@
-## Orion: Hybrid DAG + BFT Consensus Engine
-
 <p align="center">
   <img src="assets/logo.png" alt="Orion logo" />
 </p>
@@ -14,24 +12,54 @@ The system consists of three main components that run in a *pipeline*:
 2. **BFT Checkpoint Layer** – periodically finalizes the *prefix* of the ordered sequence via two-phase BFT
 3. **Execution Layer** – a state machine that consumes committed sub-dags and executes transactions **asynchronously** from BFT
 
-### Key Improvement Over Traditional BFT
+## Key Improvements Over Traditional BFT
+
+### Traditional BFT 
+```
+Consensus → Execute → Finalize
+     ↓         ↓         ↓
+   Fast    Slow (blocks)  Fast
+```
+**Problem**: Consensus must wait for execution, making consensus slow.
+
+### This Hybrid System
+```
+DAG Order → BFT Finalize → Execute
+    ↓            ↓            ↓
+  Fast         Fast      Slow (doesn't block)
+```
+**Advantage**: 
+- Consensus (DAG + BFT) is fast and doesn't wait for execution
+- Execution can be slow/parallel without affecting consensus latency
+- Ordering finality is independent of execution time
+- Execution happens on already-finalized, immutable order
 
 **Traditional BFT**: Execution is part of consensus → Consensus waits for execution → **Slow**
 
-**The Hybrid System**:
+**Hybrid System**:
 - **DAG orders transactions** (fast, does not wait for execution)
 - **BFT finalizes checkpoints on the ordered prefix** (does not wait for execution)
 - **Execution consumes committed sub-dags as soon as they are ordered**, in parallel with checkpointing
 
-## Design Principles
+## Key Properties
 
-1. **Separation of Concerns**: Ordering (consensus) is completely separate from execution
-2. **Fast Path**: DAG provides low-latency ordering (doesn't wait for execution)
-3. **Strong Finality**: BFT checkpoints provide cryptographic finality on ordered sequences
-4. **Execution After Finality**: Execution only happens after BFT finalizes the order
-5. **Non-Blocking**: Execution doesn't block consensus - consensus latency is independent
-6. **Determinism**: All nodes see the same order and state
-7. **Immutability**: Once BFT-finalized, transactions cannot be reordered
+### 1. **Ordering Guarantees**
+- **Consensus determines order**: DAG consensus establishes the canonical transaction order
+- **Order is immutable**: Once committed, the order cannot change
+- **Order is deterministic**: All nodes agree on the same order
+- **Order is independent**: Execution results don't affect consensus order
+
+### 2. **Execution Guarantees**
+- **Execution follows DAG-committed order**: The execution engine consumes committed sub-dags in order of their height.
+- **State is deterministic**: Given the same ordered transactions, all nodes compute the same state roots.
+- **Execution is asynchronous**: State transitions run in the background and do not block DAG or BFT progress.
+- **Execution can lag**: Slow or heavy workloads do not increase consensus latency; they only affect how quickly state catches up.
+
+### 3. **Finality Guarantees**
+- **Fast ordering finality**: DAG commits immediately fix the relative order of transactions.
+- **Strong checkpoint finality**: BFT checkpoints provide cryptographic finality on prefixes of the ordered sequence.
+- **Periodic finalization**: Checkpoints are formed at configurable height intervals.
+- **Order-before-execution**: Execution is always driven by the canonical DAG order; checkpoints make large prefixes of that order immutable.
 
 ## Detailed Message Flow Sequence
 
@@ -77,26 +105,6 @@ Client           DAG                 Execution              BFT Checkpoint
   |              |                       |                        |
   |<-- query state / finality ---------- | <--------------------- |
 ```
-
-## Key Properties
-
-### 1. **Ordering Guarantees**
-- **Consensus determines order**: DAG consensus establishes the canonical transaction order
-- **Order is immutable**: Once committed, the order cannot change
-- **Order is deterministic**: All nodes agree on the same order
-- **Order is independent**: Execution results don't affect consensus order
-
-### 2. **Execution Guarantees**
-- **Execution follows DAG-committed order**: The execution engine consumes committed sub-dags in order of their height.
-- **State is deterministic**: Given the same ordered transactions, all nodes compute the same state roots.
-- **Execution is asynchronous**: State transitions run in the background and do not block DAG or BFT progress.
-- **Execution can lag**: Slow or heavy workloads do not increase consensus latency; they only affect how quickly state catches up.
-
-### 3. **Finality Guarantees**
-- **Fast ordering finality**: DAG commits immediately fix the relative order of transactions.
-- **Strong checkpoint finality**: BFT checkpoints provide cryptographic finality on prefixes of the ordered sequence.
-- **Periodic finalization**: Checkpoints are formed at configurable height intervals.
-- **Order-before-execution**: Execution is always driven by the canonical DAG order; checkpoints make large prefixes of that order immutable.
 
 ## Application Integration & Examples
 
@@ -153,38 +161,7 @@ cargo test --test ordering_guarantees
 
 ## Testing
 
-The project includes comprehensive tests:
-
-- **Unit tests**: Test individual components (DAG, BFT, execution)
-- **Integration tests**: Test full pipeline
-- **Ordering guarantee tests**: Verify ordering properties
-
 Run all tests:
 ```bash
 cargo test
 ```
-
-## Why This is Better Than Traditional BFT
-
-### Traditional BFT 
-```
-Consensus → Execute → Finalize
-     ↓         ↓         ↓
-   Fast    Slow (blocks)  Fast
-```
-**Problem**: Consensus must wait for execution, making consensus slow.
-
-### This Hybrid System
-```
-DAG Order → BFT Finalize → Execute
-    ↓            ↓            ↓
-  Fast         Fast      Slow (doesn't block)
-```
-**Advantage**: 
-- Consensus (DAG + BFT) is fast and doesn't wait for execution
-- Execution can be slow/parallel without affecting consensus latency
-- Ordering finality is independent of execution time
-- Execution happens on already-finalized, immutable order
-
-
-
