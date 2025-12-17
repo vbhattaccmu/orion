@@ -35,8 +35,10 @@ async fn main() -> Result<()> {
 
     info!("Starting orion-node (authority {})", args.authority);
 
-    // Create committee with dummy validators
+    // Create committee with validators whose public keys match known keypairs.
+    // We keep the keypairs locally so each authority can use the correct signing key.
     let mut validators = Vec::new();
+    let mut keypairs = Vec::new();
     for i in 0..args.committee_size {
         let keypair = KeyPair::generate();
         validators.push(ValidatorInfo {
@@ -44,11 +46,17 @@ async fn main() -> Result<()> {
             public_key: keypair.verifying_key.clone(),
             stake: 1,
         });
+        keypairs.push(keypair);
     }
     let committee = Arc::new(Committee::new(validators));
 
-    // Generate keypair for this node
-    let keypair = KeyPair::generate();
+    // Use the committee keypair corresponding to this authority index so
+    // block signatures verify correctly against the committee's public keys.
+    let authority_index = args.authority as usize;
+    if authority_index >= keypairs.len() {
+        color_eyre::eyre::bail!("authority index {} out of range", authority_index);
+    }
+    let keypair = keypairs[authority_index].clone();
 
     // Create hybrid node
     let node = HybridNode::new(
