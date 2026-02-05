@@ -8,6 +8,9 @@
 
 Orion is a hybrid consensus engine combining **DAG-based fast ordering** with **BFT checkpoint finalization**. It separates transaction ordering (consensus) from execution, providing low-latency ordering guarantees while maintaining strong finality through periodic BFT checkpoints.
 
+> [!WARNING]  
+> **Orion is still under development.** The system design described below is our current target architecture and may evolve as we continue building, testing, and formalizing the protocol.
+
 ## Architecture Overview
 
 The system consists of three main components that run in a *pipeline*:
