@@ -83,7 +83,7 @@ impl SymbolNetwork {
         // Create symbol channel for receiving symbols from this Raptorcast instance
         let (symbol_tx, mut symbol_rx) = mpsc::unbounded_channel();
 
-        // Set symbol sender in Raptorcast (this is where it will send generated symbols)
+        // Set symbol sender in Raptorcast
         raptorcast.set_symbol_sender(symbol_tx);
 
         // Create a receiver channel for symbols from other nodes
@@ -98,11 +98,9 @@ impl SymbolNetwork {
         let data_plane = Arc::new(RaptorcastDataPlane::new(raptorcast.clone(), rx_rx));
 
         // Set up symbol routing: when this Raptorcast generates symbols, broadcast them to ALL nodes
-        // (including ourselves, so we can test the full encoding/decoding path)
         let symbol_network = self.symbol_subscribers.clone();
         tokio::spawn(async move {
             while let Some(symbol) = symbol_rx.recv().await {
-                // Broadcast symbol to all nodes (including ourselves for full test coverage)
                 let subscribers = symbol_network.lock();
                 for sender in subscribers.iter() {
                     let _ = sender.send(symbol.clone());
@@ -170,7 +168,7 @@ impl RaptorcastDataPlane {
             }
         });
 
-        // Spawn task to handle symbols from the network (from other nodes)
+        // Spawn task to handle symbols from the network 
         let raptorcast_for_symbols = raptorcast.clone();
         tokio::spawn(async move {
             let mut receiver = symbol_receiver;
