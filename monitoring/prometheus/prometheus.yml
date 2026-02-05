@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 2s
+  evaluation_interval: 2s
+
+scrape_configs:
+  - job_name: 'orion-demo'
+    static_configs:
+      - targets: ['orion:9090']
+        labels:
+          instance: 'orion-demo'
+
+  - job_name: 'orion-bench-cluster'
+    static_configs:
+      - targets: ['orion-bench1:9090']
+        labels:
+          instance: 'orion-bench1'
+      - targets: ['orion-bench2:9090']
+        labels:
+          instance: 'orion-bench2'
+      - targets: ['orion-bench3:9090']
+        labels:
+          instance: 'orion-bench3'

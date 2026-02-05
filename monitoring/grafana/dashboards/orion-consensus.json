@@ -1,0 +1,267 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "title": "Current TPS",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "orion_current_tps",
+          "legendFormat": "TPS",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "green", "value": 50 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Peak TPS",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "expr": "orion_peak_tps",
+          "legendFormat": "Peak TPS",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Reth Blocks Produced",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "orion_reth_blocks_produced_total",
+          "legendFormat": "Blocks",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        }
+      }
+    },
+    {
+      "title": "Reth Chain Height",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        {
+          "expr": "orion_reth_block_number",
+          "legendFormat": "Height",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "purple", "value": null }]
+          }
+        }
+      }
+    },
+    {
+      "title": "TPS Over Time",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        {
+          "expr": "orion_current_tps",
+          "legendFormat": "Current TPS",
+          "refId": "A"
+        },
+        {
+          "expr": "orion_peak_tps",
+          "legendFormat": "Peak TPS",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "lineWidth": 2, "fillOpacity": 20 }
+        }
+      }
+    },
+    {
+      "title": "Block Build Latency",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "targets": [
+        {
+          "expr": "rate(orion_block_build_latency_seconds_sum[30s]) / rate(orion_block_build_latency_seconds_count[30s])",
+          "legendFormat": "Avg Latency",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(orion_block_build_latency_seconds_bucket[30s]))",
+          "legendFormat": "P95 Latency",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(orion_block_build_latency_seconds_bucket[30s]))",
+          "legendFormat": "P99 Latency",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "lineWidth": 2, "fillOpacity": 10 }
+        }
+      }
+    },
+    {
+      "title": "DAG Consensus",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "targets": [
+        {
+          "expr": "orion_dag_committed_height",
+          "legendFormat": "Committed Height",
+          "refId": "A"
+        },
+        {
+          "expr": "orion_dag_current_round",
+          "legendFormat": "Current Round",
+          "refId": "B"
+        },
+        {
+          "expr": "orion_bft_last_finalized_height",
+          "legendFormat": "BFT Finalized Height",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2 }
+        }
+      }
+    },
+    {
+      "title": "Transaction Throughput",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "targets": [
+        {
+          "expr": "rate(orion_dag_transactions_ordered_total[30s])",
+          "legendFormat": "Ordered TX/s",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(orion_reth_txs_submitted_total[30s])",
+          "legendFormat": "EVM TX/s submitted",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(orion_reth_blocks_produced_total[30s])",
+          "legendFormat": "Blocks/s",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "lineWidth": 2, "fillOpacity": 15 }
+        }
+      }
+    },
+    {
+      "title": "Engine API Latency by Method",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "targets": [
+        {
+          "expr": "rate(orion_engine_api_latency_seconds_sum[30s]) / rate(orion_engine_api_latency_seconds_count[30s])",
+          "legendFormat": "{{method}} avg",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "lineWidth": 2 }
+        }
+      }
+    },
+    {
+      "title": "Totals",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "targets": [
+        {
+          "expr": "orion_dag_blocks_created_total",
+          "legendFormat": "DAG Blocks Created",
+          "refId": "A"
+        },
+        {
+          "expr": "orion_dag_subdags_committed_total",
+          "legendFormat": "Sub-DAGs Committed",
+          "refId": "B"
+        },
+        {
+          "expr": "orion_dag_transactions_ordered_total",
+          "legendFormat": "Transactions Ordered",
+          "refId": "C"
+        },
+        {
+          "expr": "orion_bft_checkpoints_finalized_total",
+          "legendFormat": "BFT Checkpoints",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2 }
+        }
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["orion", "consensus", "reth"],
+  "templating": { "list": [] },
+  "time": { "from": "now-5m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Orion Consensus + Reth Execution",
+  "uid": "orion-consensus-reth",
+  "version": 1,
+  "refresh": "2s"
+}

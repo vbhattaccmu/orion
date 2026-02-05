@@ -1,0 +1,259 @@
+services:
+  # Init container: generates shared JWT secret for Engine API auth
+  init:
+    image: alpine:3.19
+    volumes:
+      - jwt-secret:/secrets
+      - ./scripts:/scripts:ro
+    entrypoint: ["/bin/sh", "/scripts/generate_jwt.sh"]
+
+  # Reth nodes: three independent dev execution clients
+  reth1:
+    image: ghcr.io/paradigmxyz/reth:latest
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    volumes:
+      - reth1-data:/data
+      - jwt-secret:/secrets:ro
+    ports:
+      - "8545:8545"   # JSON-RPC (node 1)
+      - "8551:8551"   # Engine API (node 1)
+    command:
+      - node
+      - --dev
+      - --datadir=/data
+      - --http
+      - --http.addr=0.0.0.0
+      - --http.port=8545
+      - --http.api=eth,net,web3,debug,txpool
+      - --authrpc.addr=0.0.0.0
+      - --authrpc.port=8551
+      - --authrpc.jwtsecret=/secrets/jwt.hex
+      - --log.stdout.filter=info
+
+  reth2:
+    image: ghcr.io/paradigmxyz/reth:latest
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    volumes:
+      - reth2-data:/data
+      - jwt-secret:/secrets:ro
+    ports:
+      - "8645:8545"   
+      - "8651:8551"   
+    command:
+      - node
+      - --dev
+      - --datadir=/data
+      - --http
+      - --http.addr=0.0.0.0
+      - --http.port=8545
+      - --http.api=eth,net,web3,debug,txpool
+      - --authrpc.addr=0.0.0.0
+      - --authrpc.port=8551
+      - --authrpc.jwtsecret=/secrets/jwt.hex
+      - --log.stdout.filter=info
+
+  reth3:
+    image: ghcr.io/paradigmxyz/reth:latest
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    volumes:
+      - reth3-data:/data
+      - jwt-secret:/secrets:ro
+    ports:
+      - "8745:8545"   # JSON-RPC (node 3)
+      - "8751:8551"   # Engine API (node 3)
+    command:
+      - node
+      - --dev
+      - --datadir=/data
+      - --http
+      - --http.addr=0.0.0.0
+      - --http.port=8545
+      - --http.api=eth,net,web3,debug,txpool
+      - --authrpc.addr=0.0.0.0
+      - --authrpc.port=8551
+      - --authrpc.jwtsecret=/secrets/jwt.hex
+      - --log.stdout.filter=info
+
+  # Orion demo: single-node integration with reth1 (for interactive demo)
+  orion:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      reth1:
+        condition: service_started
+    volumes:
+      - jwt-secret:/secrets:ro
+    ports:
+      - "9090:9090"   # Prometheus metrics
+    environment:
+      - RUST_LOG=info
+      - NUM_BLOCKS=${NUM_BLOCKS:-10}
+      - BLOCK_DELAY_MS=${BLOCK_DELAY_MS:-2000}
+    command:
+      - --reth-auth-endpoint=http://reth1:8551
+      - --reth-rpc-endpoint=http://reth1:8545
+      - --jwt-secret-path=/secrets/jwt.hex
+      - --fee-recipient=0x0000000000000000000000000000000000000000
+      - --num-blocks=${NUM_BLOCKS:-10}
+      - --block-delay-ms=${BLOCK_DELAY_MS:-2000}
+      - --retry-delay-secs=3
+      - --max-retries=60
+    profiles:
+      - demo
+
+  # Orion Benchmark: TPS measurement against reth1 (baseline)
+  orion-bench1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: ["orion-reth-bench"]
+    depends_on:
+      reth1:
+        condition: service_started
+    volumes:
+      - jwt-secret:/secrets:ro
+    ports:
+      - "9090:9090"   # Prometheus metrics
+    environment:
+      - RUST_LOG=info
+      - NUM_BLOCKS=${NUM_BLOCKS:-50}
+      - TXS_PER_BLOCK=${TXS_PER_BLOCK:-10}
+    command:
+      - --reth-auth-endpoint=http://reth1:8551
+      - --reth-rpc-endpoint=http://reth1:8545
+      - --jwt-secret-path=/secrets/jwt.hex
+      - --fee-recipient=0x0000000000000000000000000000000000000000
+      - --num-blocks=${NUM_BLOCKS:-50}
+      - --txs-per-block=${TXS_PER_BLOCK:-10}
+      - --metrics-port=9090
+      - --retry-delay-secs=3
+      - --max-retries=60
+      - --validator-index=0
+      - --committee-size=3
+      - --listen-addr=0.0.0.0:9000
+      - --peer-addrs=orion-bench2:9000,orion-bench3:9000
+      - --run-forever
+    profiles:
+      - bench
+
+  # Orion Benchmark instances for reth2 and reth3 (multi-node execution clients)
+  orion-bench2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: ["orion-reth-bench"]
+    depends_on:
+      reth2:
+        condition: service_started
+    volumes:
+      - jwt-secret:/secrets:ro
+    # Expose metrics on a different port
+    ports:
+      - "9092:9090"
+    environment:
+      - RUST_LOG=info
+      - NUM_BLOCKS=${NUM_BLOCKS:-50}
+      - TXS_PER_BLOCK=${TXS_PER_BLOCK:-10}
+    command:
+      - --reth-auth-endpoint=http://reth2:8551
+      - --reth-rpc-endpoint=http://reth2:8545
+      - --jwt-secret-path=/secrets/jwt.hex
+      - --fee-recipient=0x0000000000000000000000000000000000000000
+      - --num-blocks=${NUM_BLOCKS:-50}
+      - --txs-per-block=${TXS_PER_BLOCK:-10}
+      - --metrics-port=9090
+      - --retry-delay-secs=3
+      - --max-retries=60
+      - --validator-index=1
+      - --committee-size=3
+      - --listen-addr=0.0.0.0:9000
+      - --peer-addrs=orion-bench1:9000,orion-bench3:9000
+      - --run-forever
+    profiles:
+      - bench
+
+  orion-bench3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: ["orion-reth-bench"]
+    depends_on:
+      reth3:
+        condition: service_started
+    volumes:
+      - jwt-secret:/secrets:ro
+    ports:
+      - "9093:9090"
+    environment:
+      - RUST_LOG=info
+      - NUM_BLOCKS=${NUM_BLOCKS:-50}
+      - TXS_PER_BLOCK=${TXS_PER_BLOCK:-10}
+    command:
+      - --reth-auth-endpoint=http://reth3:8551
+      - --reth-rpc-endpoint=http://reth3:8545
+      - --jwt-secret-path=/secrets/jwt.hex
+      - --fee-recipient=0x0000000000000000000000000000000000000000
+      - --num-blocks=${NUM_BLOCKS:-50}
+      - --txs-per-block=${TXS_PER_BLOCK:-10}
+      - --metrics-port=9090
+      - --retry-delay-secs=3
+      - --max-retries=60
+      - --validator-index=2
+      - --committee-size=3
+      - --listen-addr=0.0.0.0:9000
+      - --peer-addrs=orion-bench1:9000,orion-bench2:9000
+      - --run-forever
+    profiles:
+      - bench
+
+  # Prometheus: metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9091:9091"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.listen-address=:9091
+      - --storage.tsdb.retention.time=1h
+    profiles:
+      - bench
+      - monitoring
+
+  # Grafana: dashboards and visualization
+  grafana:
+    image: grafana/grafana:latest
+    depends_on:
+      - prometheus
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=orion
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    profiles:
+      - bench
+      - monitoring
+
+volumes:
+  reth1-data:
+  reth2-data:
+  reth3-data:
+  jwt-secret:
+  prometheus-data:
+  grafana-data:

@@ -1,6 +1,9 @@
 use parking_lot::Mutex;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::time::{sleep, Duration};
 
 pub trait DataPlane: Send + Sync {
     fn broadcast(&self, data: Vec<u8>) -> Result<(), String>;
@@ -193,6 +196,119 @@ impl RaptorcastDataPlane {
 impl DataPlane for RaptorcastDataPlane {
     fn broadcast(&self, data: Vec<u8>) -> Result<(), String> {
         self.raptorcast.broadcast(data)
+    }
+
+    fn subscribe(&self) -> tokio::sync::mpsc::UnboundedReceiver<Vec<u8>> {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        self.subscribers.lock().push(tx);
+        rx
+    }
+}
+
+/// Simple TCP-based DataPlane for multi-node deployments.
+///
+/// - Each node runs a listener on `listen_addr`.
+/// - Each node also connects out to a set of `peer_addrs`.
+/// - Messages are framed as: 4-byte big-endian length prefix + payload bytes.
+pub struct TcpDataPlane {
+    writers: Arc<Mutex<Vec<mpsc::UnboundedSender<Vec<u8>>>>>,
+    subscribers: Arc<Mutex<Vec<mpsc::UnboundedSender<Vec<u8>>>>>,
+}
+
+impl TcpDataPlane {
+    /// Create a new TCP data plane.
+    ///
+    /// - `listen_addr`: local TCP address to listen on (e.g. "0.0.0.0:9000").
+    /// - `peer_addrs`: list of other node addresses (e.g. ["orion-bench2:9000", "orion-bench3:9000"]).
+    pub async fn new(listen_addr: String, peer_addrs: Vec<String>) -> Arc<Self> {
+        let dp = Arc::new(Self {
+            writers: Arc::new(Mutex::new(Vec::new())),
+            subscribers: Arc::new(Mutex::new(Vec::new())),
+        });
+
+        // Start listener for inbound connections.
+        {
+            let dp_clone = dp.clone();
+            tokio::spawn(async move {
+                let listener = match TcpListener::bind(&listen_addr).await {
+                    Ok(l) => l,
+                    Err(e) => {
+                        eprintln!("TcpDataPlane: failed to bind {}: {}", listen_addr, e);
+                        return;
+                    }
+                };
+                loop {
+                    match listener.accept().await {
+                        Ok((mut socket, _)) => {
+                            let subscribers = dp_clone.subscribers.clone();
+                            tokio::spawn(async move {
+                                let mut len_buf = [0u8; 4];
+                                loop {
+                                    if socket.read_exact(&mut len_buf).await.is_err() {
+                                        break;
+                                    }
+                                    let len = u32::from_be_bytes(len_buf) as usize;
+                                    let mut buf = vec![0u8; len];
+                                    if socket.read_exact(&mut buf).await.is_err() {
+                                        break;
+                                    }
+                                    let subs = subscribers.lock();
+                                    for s in subs.iter() {
+                                        let _ = s.send(buf.clone());
+                                    }
+                                }
+                            });
+                        }
+                        Err(_e) => {
+                            // transient accept error; back off a bit
+                            sleep(Duration::from_millis(100)).await;
+                        }
+                    }
+                }
+            });
+        }
+
+        // Outbound connections to peers.
+        for addr in peer_addrs {
+            let writers = dp.writers.clone();
+            tokio::spawn(async move {
+                loop {
+                    match TcpStream::connect(&addr).await {
+                        Ok(mut stream) => {
+                            let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
+                            {
+                                writers.lock().push(tx.clone());
+                            }
+                            while let Some(msg) = rx.recv().await {
+                                let len = (msg.len() as u32).to_be_bytes();
+                                if stream.write_all(&len).await.is_err() {
+                                    break;
+                                }
+                                if stream.write_all(&msg).await.is_err() {
+                                    break;
+                                }
+                            }
+                        }
+                        Err(_e) => {
+                            // Retry periodically until the peer is up.
+                            sleep(Duration::from_secs(1)).await;
+                        }
+                    }
+                }
+            });
+        }
+
+        dp
+    }
+}
+
+impl DataPlane for TcpDataPlane {
+    fn broadcast(&self, data: Vec<u8>) -> Result<(), String> {
+        let writers = self.writers.lock();
+        for w in writers.iter() {
+            let _ = w.send(data.clone());
+        }
+        Ok(())
     }
 
     fn subscribe(&self) -> tokio::sync::mpsc::UnboundedReceiver<Vec<u8>> {
