@@ -82,8 +82,8 @@ impl EngineApiClient {
 
     /// Generate an HS256 JWT token for Engine API authentication.
     pub fn generate_jwt(&self) -> Result<String, EngineApiError> {
-        let secret_bytes =
-            hex::decode(&self.config.jwt_secret_hex).map_err(|e| EngineApiError::Jwt(e.to_string()))?;
+        let secret_bytes = hex::decode(&self.config.jwt_secret_hex)
+            .map_err(|e| EngineApiError::Jwt(e.to_string()))?;
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -103,7 +103,11 @@ impl EngineApiClient {
     }
 
     /// Send a JSON-RPC call to the authenticated Engine API endpoint (port 8551).
-    pub async fn auth_rpc_call(&self, method: &str, params: Vec<Value>) -> Result<Value, EngineApiError> {
+    pub async fn auth_rpc_call(
+        &self,
+        method: &str,
+        params: Vec<Value>,
+    ) -> Result<Value, EngineApiError> {
         let jwt = self.generate_jwt()?;
         let id = self.next_id();
 
@@ -151,7 +155,11 @@ impl EngineApiClient {
     }
 
     /// Send a JSON-RPC call to the standard RPC endpoint (port 8545, no auth).
-    pub async fn rpc_call(&self, method: &str, params: Vec<Value>) -> Result<Value, EngineApiError> {
+    pub async fn rpc_call(
+        &self,
+        method: &str,
+        params: Vec<Value>,
+    ) -> Result<Value, EngineApiError> {
         let id = self.next_id();
 
         let body = json!({
@@ -279,10 +287,10 @@ impl EngineApiClient {
         state: ForkchoiceState,
         attrs: PayloadAttributesV3,
     ) -> Result<ForkchoiceUpdatedResponse, EngineApiError> {
-        let state_val = serde_json::to_value(&state)
-            .map_err(|e| EngineApiError::Unexpected(e.to_string()))?;
-        let attrs_val = serde_json::to_value(&attrs)
-            .map_err(|e| EngineApiError::Unexpected(e.to_string()))?;
+        let state_val =
+            serde_json::to_value(&state).map_err(|e| EngineApiError::Unexpected(e.to_string()))?;
+        let attrs_val =
+            serde_json::to_value(&attrs).map_err(|e| EngineApiError::Unexpected(e.to_string()))?;
 
         let result = self
             .auth_rpc_call("engine_forkchoiceUpdatedV3", vec![state_val, attrs_val])
@@ -296,8 +304,8 @@ impl EngineApiClient {
         &self,
         state: ForkchoiceState,
     ) -> Result<ForkchoiceUpdatedResponse, EngineApiError> {
-        let state_val = serde_json::to_value(&state)
-            .map_err(|e| EngineApiError::Unexpected(e.to_string()))?;
+        let state_val =
+            serde_json::to_value(&state).map_err(|e| EngineApiError::Unexpected(e.to_string()))?;
 
         let result = self
             .auth_rpc_call("engine_forkchoiceUpdatedV3", vec![state_val, Value::Null])
@@ -367,9 +375,7 @@ impl EngineApiClient {
         };
 
         debug!(parent = parent_hash, "Step 1: forkchoiceUpdated with attrs");
-        let fcu_resp = self
-            .forkchoice_updated_with_attributes(fcs, attrs)
-            .await?;
+        let fcu_resp = self.forkchoice_updated_with_attributes(fcs, attrs).await?;
 
         if fcu_resp.payload_status.status != "VALID" {
             warn!(
@@ -387,9 +393,7 @@ impl EngineApiClient {
                 // In dev mode Reth may skip creating a payload when there are no txs or
                 // when its internal dev forkchoice already built a block. For the demo
                 // we treat this as “no new payload” rather than a hard error.
-                warn!(
-                    "forkchoiceUpdatedV3 returned no payload_id; using latest block hash as-is"
-                );
+                warn!("forkchoiceUpdatedV3 returned no payload_id; using latest block hash as-is");
                 let latest = self.get_latest_block_hash().await?;
                 return Ok((latest, Value::Null));
             }
@@ -524,8 +528,7 @@ mod tests {
         let mut wrong_validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS384);
         wrong_validation.required_spec_claims.clear();
         wrong_validation.set_required_spec_claims::<&str>(&[]);
-        let wrong_result =
-            jsonwebtoken::decode::<Value>(&token, &decoding_key, &wrong_validation);
+        let wrong_result = jsonwebtoken::decode::<Value>(&token, &decoding_key, &wrong_validation);
         assert!(wrong_result.is_err(), "Token must NOT decode with HS384");
     }
 

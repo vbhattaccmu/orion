@@ -234,10 +234,7 @@ async fn main() -> Result<()> {
 
     let executed = reth_engine.get_executed();
     info!("Reth blocks produced: {}", executed.len());
-    info!(
-        "Latest Reth block: {}",
-        reth_engine.latest_block_hash()
-    );
+    info!("Latest Reth block: {}", reth_engine.latest_block_hash());
 
     // Query Reth for final block number
     match engine_api.get_block_number().await {

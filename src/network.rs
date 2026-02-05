@@ -1,8 +1,8 @@
 use parking_lot::Mutex;
 use std::sync::Arc;
-use tokio::sync::mpsc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
 
 pub trait DataPlane: Send + Sync {

@@ -42,7 +42,10 @@ impl RethExecutionEngine {
     /// Submit EVM transactions to Reth's transaction pool.
     /// Each transaction in the sub-DAG is treated as a raw tx hex string
     /// and sent via eth_sendRawTransaction.
-    pub async fn submit_transactions(&self, txs: &[Vec<u8>]) -> Vec<Result<String, EngineApiError>> {
+    pub async fn submit_transactions(
+        &self,
+        txs: &[Vec<u8>],
+    ) -> Vec<Result<String, EngineApiError>> {
         let mut results = Vec::with_capacity(txs.len());
         for tx in txs {
             // Convert raw bytes to 0x-prefixed hex
@@ -105,8 +108,8 @@ impl RethExecutionEngine {
         *self.latest_block_hash.lock() = new_block_hash.clone();
 
         // Convert the Reth block hash into a StateRoot for Orion's type system
-        let hash_bytes = hex::decode(new_block_hash.trim_start_matches("0x"))
-            .unwrap_or_else(|_| vec![0u8; 32]);
+        let hash_bytes =
+            hex::decode(new_block_hash.trim_start_matches("0x")).unwrap_or_else(|_| vec![0u8; 32]);
         let mut state_root_bytes = [0u8; 32];
         let len = std::cmp::min(hash_bytes.len(), 32);
         state_root_bytes[..len].copy_from_slice(&hash_bytes[..len]);
@@ -177,10 +180,8 @@ mod tests {
             jwt_secret_hex: "aa".repeat(32),
         };
         let client = Arc::new(EngineApiClient::new(config));
-        let engine = RethExecutionEngine::new(
-            client,
-            "0x0000000000000000000000000000000000000000".into(),
-        );
+        let engine =
+            RethExecutionEngine::new(client, "0x0000000000000000000000000000000000000000".into());
 
         assert!(engine.get_executed().is_empty());
         assert_eq!(engine.latest_block_hash(), "");
@@ -198,10 +199,8 @@ mod tests {
             jwt_secret_hex: "aa".repeat(32),
         };
         let client = Arc::new(EngineApiClient::new(config));
-        let engine = RethExecutionEngine::new(
-            client,
-            "0x0000000000000000000000000000000000000000".into(),
-        );
+        let engine =
+            RethExecutionEngine::new(client, "0x0000000000000000000000000000000000000000".into());
 
         // Simulate setting block hash (as init would do)
         *engine.latest_block_hash.lock() = "0xdeadbeef".into();
@@ -216,10 +215,8 @@ mod tests {
             jwt_secret_hex: "aa".repeat(32),
         };
         let client = Arc::new(EngineApiClient::new(config));
-        let engine = RethExecutionEngine::new(
-            client,
-            "0x0000000000000000000000000000000000000000".into(),
-        );
+        let engine =
+            RethExecutionEngine::new(client, "0x0000000000000000000000000000000000000000".into());
 
         // Simulate the timestamp logic used in execute_subdag
         let mut timestamps = Vec::new();
@@ -310,10 +307,8 @@ mod tests {
             jwt_secret_hex: "aa".repeat(32),
         };
         let client = Arc::new(EngineApiClient::new(config));
-        let engine = RethExecutionEngine::new(
-            client,
-            "0x0000000000000000000000000000000000000000".into(),
-        );
+        let engine =
+            RethExecutionEngine::new(client, "0x0000000000000000000000000000000000000000".into());
 
         // Manually push executed blocks to simulate what execute_subdag does
         let block1 = ExecutedBlock {

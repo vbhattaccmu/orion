@@ -99,7 +99,10 @@ async fn main() -> Result<()> {
     info!("╔══════════════════════════════════════════════════╗");
     info!("║          Orion-Reth TPS Benchmark                ║");
     info!("╚══════════════════════════════════════════════════╝");
-    info!("Blocks: {}, TXs/block: {}", args.num_blocks, args.txs_per_block);
+    info!(
+        "Blocks: {}, TXs/block: {}",
+        args.num_blocks, args.txs_per_block
+    );
     info!(
         "Total transactions: {}",
         args.num_blocks * args.txs_per_block
@@ -114,7 +117,10 @@ async fn main() -> Result<()> {
     tokio::spawn(async move {
         serve_metrics(metrics_clone, metrics_port).await;
     });
-    info!("Prometheus metrics at http://0.0.0.0:{}/metrics", args.metrics_port);
+    info!(
+        "Prometheus metrics at http://0.0.0.0:{}/metrics",
+        args.metrics_port
+    );
 
     // Load JWT secret
     let jwt_secret = load_jwt_secret(&args.jwt_secret_path)?;
@@ -166,11 +172,7 @@ async fn main() -> Result<()> {
 
     let committee = Arc::new(Committee::new(validators));
     let my_kp = keypairs[my_index as usize].clone();
-    let dag = Arc::new(DagOrdering::new(
-        committee.clone(),
-        my_index,
-        my_kp,
-    ));
+    let dag = Arc::new(DagOrdering::new(committee.clone(), my_index, my_kp));
 
     // Attach TCP-based data plane so all Orion validators gossip over the Docker network.
     let peer_addrs: Vec<String> = args
@@ -265,9 +267,7 @@ async fn main() -> Result<()> {
                     metrics_clone
                         .dag_committed_height
                         .set(executed.height as i64);
-                    metrics_clone
-                        .dag_transactions_ordered
-                        .inc_by(tx_count);
+                    metrics_clone.dag_transactions_ordered.inc_by(tx_count);
                     metrics_clone.block_build_latency.observe(latency);
 
                     total_txs_clone.fetch_add(tx_count, AtomicOrdering::Relaxed);
@@ -395,7 +395,10 @@ async fn main() -> Result<()> {
             "  Total time:              {:.2}s",
             total_elapsed.as_secs_f64()
         );
-        info!("  Blocks produced:         {} / {}", successful_blocks, args.num_blocks);
+        info!(
+            "  Blocks produced:         {} / {}",
+            successful_blocks, args.num_blocks
+        );
         info!("  Failed blocks:           {}", failed_blocks);
         info!("  Transactions per block:  {}", args.txs_per_block);
         info!("  Total transactions:      {}", total_txs);
@@ -439,7 +442,10 @@ async fn main() -> Result<()> {
 
         info!("");
         info!("═══════════════════════════════════════════════════════════════");
-        info!("Metrics available at http://0.0.0.0:{}/metrics", args.metrics_port);
+        info!(
+            "Metrics available at http://0.0.0.0:{}/metrics",
+            args.metrics_port
+        );
         info!("Press Ctrl+C to exit.");
     }
 
@@ -501,11 +507,10 @@ async fn serve_metrics(metrics: Arc<OrionMetrics>, port: u16) {
                 }
             });
 
-            if let Err(e) = hyper_util::server::conn::auto::Builder::new(
-                hyper_util::rt::TokioExecutor::new(),
-            )
-            .serve_connection(io, service)
-            .await
+            if let Err(e) =
+                hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new())
+                    .serve_connection(io, service)
+                    .await
             {
                 warn!("Metrics connection error: {}", e);
             }
@@ -525,10 +530,7 @@ fn load_jwt_secret(path: &str) -> Result<String> {
     if clean.len() == 64 && hex::decode(clean).is_ok() {
         return Ok(clean.to_string());
     }
-    color_eyre::eyre::bail!(
-        "Invalid JWT secret at '{}': expected 64 hex chars",
-        path
-    )
+    color_eyre::eyre::bail!("Invalid JWT secret at '{}': expected 64 hex chars", path)
 }
 
 async fn wait_for_reth(
