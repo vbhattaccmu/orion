@@ -2,6 +2,10 @@
   <img src="assets/logo.png" alt="Orion logo" />
 </p>
 
+<p align="center">
+  <img src="assets/orion.gif" alt="Orion DAG + BFT consensus animation" />
+</p>
+
 Orion is a hybrid consensus engine combining **DAG-based fast ordering** with **BFT checkpoint finalization**. It separates transaction ordering (consensus) from execution, providing low-latency ordering guarantees while maintaining strong finality through periodic BFT checkpoints.
 
 ## Architecture Overview
