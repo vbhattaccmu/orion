@@ -168,7 +168,7 @@ impl RaptorcastDataPlane {
             }
         });
 
-        // Spawn task to handle symbols from the network 
+        // Spawn task to handle symbols from the network
         let raptorcast_for_symbols = raptorcast.clone();
         tokio::spawn(async move {
             let mut receiver = symbol_receiver;

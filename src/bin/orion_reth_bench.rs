@@ -289,10 +289,7 @@ async fn main() -> Result<()> {
                 let result = reth_engine_clone.execute_subdag(&subdag).await;
                 match result {
                     Ok(executed) => break Ok(executed),
-                    Err(e)
-                        if is_retryable_build_error(&e)
-                            && attempt < max_build_retries =>
-                    {
+                    Err(e) if is_retryable_build_error(&e) && attempt < max_build_retries => {
                         attempt += 1;
                         warn!(
                             height = subdag.height,
@@ -301,7 +298,8 @@ async fn main() -> Result<()> {
                             error = %e,
                             "Retrying block build after retryable error"
                         );
-                        tokio::time::sleep(tokio::time::Duration::from_millis(retry_delay_ms)).await;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(retry_delay_ms))
+                            .await;
                     }
                     Err(e) => break Err(e),
                 }
@@ -363,11 +361,8 @@ async fn main() -> Result<()> {
             while let Ok((height, latency)) = done_rx.try_recv() {
                 if latency >= 0.0 {
                     successful_blocks += 1;
-                    current_delay_ms = recover_delay(
-                        current_delay_ms,
-                        args.block_delay_ms,
-                        args.recovery_step_ms,
-                    );
+                    current_delay_ms =
+                        recover_delay(current_delay_ms, args.block_delay_ms, args.recovery_step_ms);
                 } else {
                     failed_blocks += 1;
                     current_delay_ms = backoff_delay(
@@ -476,11 +471,8 @@ async fn main() -> Result<()> {
             }
 
             if block_succeeded {
-                current_delay_ms = recover_delay(
-                    current_delay_ms,
-                    args.block_delay_ms,
-                    args.recovery_step_ms,
-                );
+                current_delay_ms =
+                    recover_delay(current_delay_ms, args.block_delay_ms, args.recovery_step_ms);
             }
             tokio::time::sleep(tokio::time::Duration::from_millis(current_delay_ms)).await;
         }
@@ -595,7 +587,11 @@ fn recover_delay(current: u64, base: u64, recovery_step: u64) -> u64 {
         return base;
     }
     let reduced = current.saturating_sub(recovery_step);
-    if reduced < base { base } else { reduced }
+    if reduced < base {
+        base
+    } else {
+        reduced
+    }
 }
 
 /// Serve Prometheus metrics on an HTTP endpoint.
