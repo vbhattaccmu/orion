@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Orion-Reth Explorer</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b1020;
+        --panel: #141b33;
+        --muted: #a5b0d6;
+        --text: #f3f6ff;
+        --accent: #6ea8fe;
+      }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .wrap {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .card {
+        background: var(--panel);
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      h1 {
+        margin: 0 0 6px;
+        font-size: 24px;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .row {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      .stat {
+        flex: 1 1 220px;
+        background: #0f1630;
+        border-radius: 10px;
+        padding: 12px;
+      }
+      .stat .k {
+        color: var(--muted);
+        font-size: 12px;
+        margin-bottom: 6px;
+      }
+      .stat .v {
+        font-size: 22px;
+        font-weight: 700;
+      }
+      button {
+        background: var(--accent);
+        color: #00163d;
+        border: 0;
+        border-radius: 8px;
+        padding: 10px 14px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 8px;
+      }
+      th, td {
+        text-align: left;
+        padding: 10px 8px;
+        border-bottom: 1px solid #202a4d;
+        font-size: 13px;
+      }
+      th {
+        color: var(--muted);
+        font-weight: 600;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      a {
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <h1>Orion-Reth Explorer</h1>
+        <div class="muted">Reads chain data from <code>reth1</code> through <code>/rpc</code>.</div>
+      </div>
+
+      <div class="card row">
+        <div class="stat">
+          <div class="k">Latest Block</div>
+          <div class="v" id="latestBlock">-</div>
+        </div>
+        <div class="stat">
+          <div class="k">Total TXs (last 20 blocks)</div>
+          <div class="v" id="recentTxs">-</div>
+        </div>
+        <div class="stat">
+          <div class="k">Last Refresh</div>
+          <div class="v" id="lastRefresh">-</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <button id="refreshBtn">Refresh</button>
+        <div class="muted" style="margin-top: 10px;">
+          Tip: keep this open while benchmark is running.
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Block</th>
+              <th>Hash</th>
+              <th>TX Count</th>
+              <th>Timestamp</th>
+            </tr>
+          </thead>
+          <tbody id="blocksBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <script>
+      const blocksBody = document.getElementById("blocksBody");
+      const latestBlockEl = document.getElementById("latestBlock");
+      const recentTxsEl = document.getElementById("recentTxs");
+      const lastRefreshEl = document.getElementById("lastRefresh");
+      const refreshBtn = document.getElementById("refreshBtn");
+
+      async function rpc(method, params) {
+        const response = await fetch("/rpc", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: Date.now(),
+            method,
+            params
+          })
+        });
+        const payload = await response.json();
+        if (payload.error) {
+          throw new Error(payload.error.message || "RPC error");
+        }
+        return payload.result;
+      }
+
+      function hexToInt(hex) {
+        return parseInt(hex, 16);
+      }
+
+      async function loadBlocks() {
+        const blockHex = await rpc("eth_blockNumber", []);
+        const latest = hexToInt(blockHex);
+        latestBlockEl.textContent = latest.toString();
+
+        const numbers = [];
+        for (let i = latest; i >= 0 && numbers.length < 20; i--) {
+          numbers.push("0x" + i.toString(16));
+        }
+
+        const blocks = await Promise.all(
+          numbers.map((n) => rpc("eth_getBlockByNumber", [n, false]))
+        );
+
+        let txSum = 0;
+        blocksBody.innerHTML = "";
+        for (const b of blocks) {
+          if (!b) continue;
+          const blockNum = hexToInt(b.number);
+          const txCount = Array.isArray(b.transactions) ? b.transactions.length : 0;
+          txSum += txCount;
+          const date = new Date(hexToInt(b.timestamp) * 1000);
+
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${blockNum}</td>
+            <td><code>${b.hash}</code></td>
+            <td>${txCount}</td>
+            <td>${date.toLocaleString()}</td>
+          `;
+          blocksBody.appendChild(tr);
+        }
+
+        recentTxsEl.textContent = txSum.toString();
+        lastRefreshEl.textContent = new Date().toLocaleTimeString();
+      }
+
+      refreshBtn.addEventListener("click", () => {
+        loadBlocks().catch((err) => {
+          alert("Failed to load blocks: " + err.message);
+        });
+      });
+
+      loadBlocks().catch((err) => {
+        console.error(err);
+      });
+      setInterval(() => loadBlocks().catch(() => {}), 5000);
+    </script>
+  </body>
+</html>

@@ -4,7 +4,7 @@ use color_eyre::Result;
 use orion::committee::{Committee, ValidatorInfo};
 use orion::crypto::KeyPair;
 use orion::dag::DagOrdering;
-use orion::engine_api::{EngineApiClient, EngineApiConfig};
+use orion::engine_api::{EngineApiClient, EngineApiConfig, EngineApiError};
 use orion::metrics::OrionMetrics;
 use orion::network::{DataPlane, TcpDataPlane};
 use orion::reth_execution::RethExecutionEngine;
@@ -51,6 +51,31 @@ struct Args {
     /// Whether to submit EVM transactions to Reth's pool before each block
     #[clap(long, default_value = "true")]
     submit_evm_txs: bool,
+
+    /// Delay between benchmark block submissions (ms).
+    /// Helps avoid overdriving Engine API and txpool under heavy load.
+    #[clap(long, default_value = "25")]
+    block_delay_ms: u64,
+
+    /// Number of retries for block build on retryable Engine API errors.
+    #[clap(long, default_value = "1")]
+    max_block_build_retries: usize,
+
+    /// Delay between block build retries (ms).
+    #[clap(long, default_value = "25")]
+    block_build_retry_delay_ms: u64,
+
+    /// Extra delay added after an execution/build failure (ms).
+    #[clap(long, default_value = "50")]
+    error_backoff_ms: u64,
+
+    /// Max pacing delay (ms) when backing off on repeated failures.
+    #[clap(long, default_value = "1000")]
+    max_block_delay_ms: u64,
+
+    /// Delay reduction after successful blocks (ms).
+    #[clap(long, default_value = "25")]
+    recovery_step_ms: u64,
 
     /// Prometheus metrics port
     #[clap(long, default_value = "9090")]
@@ -215,6 +240,8 @@ async fn main() -> Result<()> {
     let engine_api_clone = engine_api.clone();
     let metrics_clone = metrics.clone();
     let submit_evm = args.submit_evm_txs;
+    let max_build_retries = args.max_block_build_retries;
+    let retry_delay_ms = args.block_build_retry_delay_ms;
 
     let exec_handle = tokio::spawn(async move {
         let mut last_height = 0u64;
@@ -256,8 +283,31 @@ async fn main() -> Result<()> {
                 }
             }
 
-            // Build Reth block
-            match reth_engine_clone.execute_subdag(&subdag).await {
+            // Build Reth block with retry on known transient Engine API errors.
+            let mut attempt = 0usize;
+            let build_result = loop {
+                let result = reth_engine_clone.execute_subdag(&subdag).await;
+                match result {
+                    Ok(executed) => break Ok(executed),
+                    Err(e)
+                        if is_retryable_build_error(&e)
+                            && attempt < max_build_retries =>
+                    {
+                        attempt += 1;
+                        warn!(
+                            height = subdag.height,
+                            attempt,
+                            max_build_retries,
+                            error = %e,
+                            "Retrying block build after retryable error"
+                        );
+                        tokio::time::sleep(tokio::time::Duration::from_millis(retry_delay_ms)).await;
+                    }
+                    Err(e) => break Err(e),
+                }
+            };
+
+            match build_result {
                 Ok(executed) => {
                     let latency = block_start.elapsed().as_secs_f64();
                     let tx_count = executed.transactions.len() as u64;
@@ -290,6 +340,10 @@ async fn main() -> Result<()> {
     if args.run_forever {
         info!("Running in run-forever mode (ignoring num_blocks)");
         let mut i: usize = 0;
+        let mut current_delay_ms = args.block_delay_ms;
+        let mut successful_blocks = 0u64;
+        let mut failed_blocks = 0u64;
+        let run_start = Instant::now();
         loop {
             let round = i as u64;
 
@@ -304,8 +358,51 @@ async fn main() -> Result<()> {
             dag.add_block(block);
 
             i += 1;
-            // Small delay to avoid a tight loop overwhelming the node
-            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+            // Drain completed execution results and adapt pacing.
+            while let Ok((height, latency)) = done_rx.try_recv() {
+                if latency >= 0.0 {
+                    successful_blocks += 1;
+                    current_delay_ms = recover_delay(
+                        current_delay_ms,
+                        args.block_delay_ms,
+                        args.recovery_step_ms,
+                    );
+                } else {
+                    failed_blocks += 1;
+                    current_delay_ms = backoff_delay(
+                        current_delay_ms,
+                        args.error_backoff_ms,
+                        args.max_block_delay_ms,
+                    );
+                    warn!(
+                        height,
+                        failed_blocks,
+                        delay_ms = current_delay_ms,
+                        "Execution failed; increasing producer delay"
+                    );
+                }
+            }
+
+            if i % 10 == 0 {
+                let elapsed = run_start.elapsed().as_secs_f64();
+                let total_txs = total_txs_executed.load(AtomicOrdering::Relaxed);
+                let current_tps = if elapsed > 0.0 {
+                    total_txs as f64 / elapsed
+                } else {
+                    0.0
+                };
+                info!(
+                    produced_blocks = i,
+                    successful_blocks,
+                    failed_blocks,
+                    delay_ms = current_delay_ms,
+                    tps = format!("{:.1}", current_tps),
+                    "Run-forever progress"
+                );
+            }
+
+            tokio::time::sleep(tokio::time::Duration::from_millis(current_delay_ms)).await;
         }
         // Unreachable
     } else {
@@ -313,11 +410,13 @@ async fn main() -> Result<()> {
         let mut successful_blocks = 0u64;
         let mut failed_blocks = 0u64;
         let mut peak_tps_val: f64 = 0.0;
+        let mut current_delay_ms = args.block_delay_ms;
 
         let mut block_latencies = Vec::with_capacity(args.num_blocks);
 
         for i in 0..args.num_blocks {
             let round = i as u64;
+            let mut block_succeeded = false;
 
             // Create transactions for this block
             let txs: Vec<Transaction> = (0..args.txs_per_block)
@@ -333,6 +432,7 @@ async fn main() -> Result<()> {
             // Wait for execution
             if let Some((height, latency)) = done_rx.recv().await {
                 if latency >= 0.0 {
+                    block_succeeded = true;
                     successful_blocks += 1;
                     block_latencies.push(latency);
 
@@ -362,9 +462,27 @@ async fn main() -> Result<()> {
                     }
                 } else {
                     failed_blocks += 1;
-                    warn!(block = i + 1, "Block failed");
+                    current_delay_ms = backoff_delay(
+                        current_delay_ms,
+                        args.error_backoff_ms,
+                        args.max_block_delay_ms,
+                    );
+                    warn!(
+                        block = i + 1,
+                        delay_ms = current_delay_ms,
+                        "Block failed; increasing producer delay"
+                    );
                 }
             }
+
+            if block_succeeded {
+                current_delay_ms = recover_delay(
+                    current_delay_ms,
+                    args.block_delay_ms,
+                    args.recovery_step_ms,
+                );
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(current_delay_ms)).await;
         }
 
         let total_elapsed = bench_start.elapsed();
@@ -457,6 +575,27 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn is_retryable_build_error(err: &EngineApiError) -> bool {
+    match err {
+        EngineApiError::JsonRpc { code, message } => {
+            *code == -38003 && message.contains("Invalid payload attributes")
+        }
+        _ => false,
+    }
+}
+
+fn backoff_delay(current: u64, backoff_step: u64, max_delay: u64) -> u64 {
+    current.saturating_add(backoff_step).min(max_delay)
+}
+
+fn recover_delay(current: u64, base: u64, recovery_step: u64) -> u64 {
+    if current <= base {
+        return base;
+    }
+    let reduced = current.saturating_sub(recovery_step);
+    if reduced < base { base } else { reduced }
 }
 
 /// Serve Prometheus metrics on an HTTP endpoint.

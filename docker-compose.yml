@@ -1,5 +1,4 @@
 services:
-  # Init container: generates shared JWT secret for Engine API auth
   init:
     image: alpine:3.19
     volumes:
@@ -7,7 +6,6 @@ services:
       - ./scripts:/scripts:ro
     entrypoint: ["/bin/sh", "/scripts/generate_jwt.sh"]
 
-  # Reth nodes: three independent dev execution clients
   reth1:
     image: ghcr.io/paradigmxyz/reth:latest
     depends_on:
@@ -17,8 +15,8 @@ services:
       - reth1-data:/data
       - jwt-secret:/secrets:ro
     ports:
-      - "8545:8545"   # JSON-RPC (node 1)
-      - "8551:8551"   # Engine API (node 1)
+      - "8545:8545"  
+      - "8551:8551"  
     command:
       - node
       - --dev
@@ -123,8 +121,13 @@ services:
       - "9090:9090"   # Prometheus metrics
     environment:
       - RUST_LOG=info
-      - NUM_BLOCKS=${NUM_BLOCKS:-50}
-      - TXS_PER_BLOCK=${TXS_PER_BLOCK:-10}
+      - NUM_BLOCKS=${NUM_BLOCKS:-60}
+      - TXS_PER_BLOCK=${TXS_PER_BLOCK:-1}
+      - BLOCK_DELAY_MS=${BLOCK_DELAY_MS:-25}
+      - MAX_BLOCK_BUILD_RETRIES=${MAX_BLOCK_BUILD_RETRIES:-1}
+      - BLOCK_BUILD_RETRY_DELAY_MS=${BLOCK_BUILD_RETRY_DELAY_MS:-25}
+      - BENCH1_COMMITTEE_SIZE=${BENCH1_COMMITTEE_SIZE:-1}
+      - BENCH1_PEER_ADDRS=${BENCH1_PEER_ADDRS:-}
     command:
       - --reth-auth-endpoint=http://reth1:8551
       - --reth-rpc-endpoint=http://reth1:8545
@@ -132,14 +135,16 @@ services:
       - --fee-recipient=0x0000000000000000000000000000000000000000
       - --num-blocks=${NUM_BLOCKS:-50}
       - --txs-per-block=${TXS_PER_BLOCK:-10}
+      - --block-delay-ms=${BLOCK_DELAY_MS:-25}
+      - --max-block-build-retries=${MAX_BLOCK_BUILD_RETRIES:-1}
+      - --block-build-retry-delay-ms=${BLOCK_BUILD_RETRY_DELAY_MS:-25}
       - --metrics-port=9090
       - --retry-delay-secs=3
       - --max-retries=60
       - --validator-index=0
-      - --committee-size=3
+      - --committee-size=${BENCH1_COMMITTEE_SIZE:-1}
       - --listen-addr=0.0.0.0:9000
-      - --peer-addrs=orion-bench2:9000,orion-bench3:9000
-      - --run-forever
+      - --peer-addrs=${BENCH1_PEER_ADDRS:-}
     profiles:
       - bench
 
@@ -159,8 +164,11 @@ services:
       - "9092:9090"
     environment:
       - RUST_LOG=info
-      - NUM_BLOCKS=${NUM_BLOCKS:-50}
-      - TXS_PER_BLOCK=${TXS_PER_BLOCK:-10}
+      - NUM_BLOCKS=${NUM_BLOCKS:-60}
+      - TXS_PER_BLOCK=${TXS_PER_BLOCK:-1}
+      - BLOCK_DELAY_MS=${BLOCK_DELAY_MS:-25}
+      - MAX_BLOCK_BUILD_RETRIES=${MAX_BLOCK_BUILD_RETRIES:-1}
+      - BLOCK_BUILD_RETRY_DELAY_MS=${BLOCK_BUILD_RETRY_DELAY_MS:-25}
     command:
       - --reth-auth-endpoint=http://reth2:8551
       - --reth-rpc-endpoint=http://reth2:8545
@@ -168,6 +176,9 @@ services:
       - --fee-recipient=0x0000000000000000000000000000000000000000
       - --num-blocks=${NUM_BLOCKS:-50}
       - --txs-per-block=${TXS_PER_BLOCK:-10}
+      - --block-delay-ms=${BLOCK_DELAY_MS:-25}
+      - --max-block-build-retries=${MAX_BLOCK_BUILD_RETRIES:-1}
+      - --block-build-retry-delay-ms=${BLOCK_BUILD_RETRY_DELAY_MS:-25}
       - --metrics-port=9090
       - --retry-delay-secs=3
       - --max-retries=60
@@ -175,7 +186,6 @@ services:
       - --committee-size=3
       - --listen-addr=0.0.0.0:9000
       - --peer-addrs=orion-bench1:9000,orion-bench3:9000
-      - --run-forever
     profiles:
       - bench
 
@@ -193,8 +203,11 @@ services:
       - "9093:9090"
     environment:
       - RUST_LOG=info
-      - NUM_BLOCKS=${NUM_BLOCKS:-50}
-      - TXS_PER_BLOCK=${TXS_PER_BLOCK:-10}
+      - NUM_BLOCKS=${NUM_BLOCKS:-60}
+      - TXS_PER_BLOCK=${TXS_PER_BLOCK:-1}
+      - BLOCK_DELAY_MS=${BLOCK_DELAY_MS:-25}
+      - MAX_BLOCK_BUILD_RETRIES=${MAX_BLOCK_BUILD_RETRIES:-1}
+      - BLOCK_BUILD_RETRY_DELAY_MS=${BLOCK_BUILD_RETRY_DELAY_MS:-25}
     command:
       - --reth-auth-endpoint=http://reth3:8551
       - --reth-rpc-endpoint=http://reth3:8545
@@ -202,6 +215,9 @@ services:
       - --fee-recipient=0x0000000000000000000000000000000000000000
       - --num-blocks=${NUM_BLOCKS:-50}
       - --txs-per-block=${TXS_PER_BLOCK:-10}
+      - --block-delay-ms=${BLOCK_DELAY_MS:-25}
+      - --max-block-build-retries=${MAX_BLOCK_BUILD_RETRIES:-1}
+      - --block-build-retry-delay-ms=${BLOCK_BUILD_RETRY_DELAY_MS:-25}
       - --metrics-port=9090
       - --retry-delay-secs=3
       - --max-retries=60
@@ -209,7 +225,6 @@ services:
       - --committee-size=3
       - --listen-addr=0.0.0.0:9000
       - --peer-addrs=orion-bench1:9000,orion-bench2:9000
-      - --run-forever
     profiles:
       - bench
 
@@ -247,6 +262,22 @@ services:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
     profiles:
+      - bench
+      - monitoring
+
+  # Lightweight block explorer UI for reth1 via proxied JSON-RPC
+  explorer:
+    image: nginx:alpine
+    depends_on:
+      reth1:
+        condition: service_started
+    volumes:
+      - ./monitoring/explorer/index.html:/usr/share/nginx/html/index.html:ro
+      - ./monitoring/explorer/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "8080:80"
+    profiles:
+      - demo
       - bench
       - monitoring
 
